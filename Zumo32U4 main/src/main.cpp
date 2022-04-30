@@ -8,10 +8,12 @@ Zumo32U4LineSensors lineSensors; //Deklarerer linjesensorer
 Zumo32U4ProximitySensors proxSensors;
 Zumo32U4ButtonA buttonA; //Deklarerer knapp A
 Zumo32U4LCD display; //Deklarerer skjerm
+Zumo32U4Encoders encoders;
 
 #define numberOfSensors 5 //Definerer antallet sensorer
 unsigned int lineSensorValues[numberOfSensors];  //Lager en liste for sensorverdier
 
+//Variabler linjefølger:
 int wanted_lineSensor_val = 1500;
 int max_speed = 400;
 int error;
@@ -19,6 +21,18 @@ int last_error;
 int time_since_on_track;
 int left_speed;
 int right_speed;
+
+//Variabler speedometer:
+float total_distance;
+unsigned long last_speed_update;
+unsigned long last_minute_update;
+float prev_minute_distance;
+float max_speedometer;
+float timeOverSeventy;
+
+//Variabler SW-batteri:
+float max_battery_capacity = 0.5; //mAh
+float current_battery_capacity = 0.5;
 
 void calibrateSensors() { //Oppretter funksjon for å kalibrere sensorer
   int now = millis(); //Bruker funksjonen millis() til å lagre tiden
@@ -105,9 +119,9 @@ void left_turn()
   lineSensors.readLine(lineSensorValues);
 
   motors.setSpeeds(max_speed, max_speed);
-    delay(100);
+    delay(50);
     motors.setSpeeds(0,0);
-    delay(100);
+    delay(50);
     lineSensors.readLine(lineSensorValues);
 
     if(lineSensorValues[0] < 150 && lineSensorValues[1] < 150
@@ -119,20 +133,14 @@ void left_turn()
         lineSensors.readLine(lineSensorValues);
       }
     }
-
-    else
-    {
-      motors.setSpeeds(max_speed, max_speed);
-      delay(10);
-    }
 }
 
 void right_turn()
 {
   motors.setSpeeds(max_speed, max_speed);
-    delay(100);
+    delay(50);
     motors.setSpeeds(0,0);
-    delay(100);
+    delay(50);
     lineSensors.readLine(lineSensorValues);
     
     if(lineSensorValues[0] < 150 && lineSensorValues[1] < 150
@@ -144,31 +152,83 @@ void right_turn()
         lineSensors.readLine(lineSensorValues);
       }
     }
-
-    else
-    {
-      motors.setSpeeds(max_speed, max_speed);
-      delay(10);
-    }
 }
 
 void right_prox_stop()
 {
   proxSensors.read();
 
-  //if(proxSensors.countsRightWithRightLeds() >= 6)
-  //{
-    while(proxSensors.countsRightWithRightLeds() >= 6)
+  while(proxSensors.countsRightWithRightLeds() >= 6)
+  {
+    motors.setSpeeds(0, 0);
+    proxSensors.read();
+  }
+}
+
+void speedometer()
+{
+  if (millis() - last_speed_update > 100)
+  {
+    float leftCounts = encoders.getCountsAndResetLeft();
+    float rightCounts = encoders.getCountsAndResetRight();
+    float distance = (leftCounts + rightCounts) / (2 * 77); //cm
+    total_distance += distance;
+    float current_speed = distance / 0.1;
+
+    float power_consumption = (2.0 * current_speed + distance) * (1.0 / 36000.0); //mAh
+    current_battery_capacity -= power_consumption;
+
+    if(current_battery_capacity < 10)
     {
-      motors.setSpeeds(0, 0);
-      proxSensors.read();
+      //Varsling
     }
-  //}
+
+    if(current_battery_capacity <= 0)
+    {
+      while (current_battery_capacity <= 0)
+      {
+        motors.setSpeeds(0, 0);
+      }
+      
+    }
+
+    if (current_speed > max_speedometer)
+    {
+      max_speedometer = current_speed;
+    }
+
+    if (current_speed > 36)
+    {
+      timeOverSeventy += 0.1;
+    }
+
+    display.clear();
+    display.print(round(current_speed));
+    display.print(" cm/s");
+    display.gotoXY(0, 1);
+    display.print(current_battery_capacity);
+    //display.print(total_distance);
+    display.print("cm");
+
+    last_speed_update = millis();
+
+  }
+
+  if (millis() - last_minute_update > 60000)
+  {
+    float minute_distance = total_distance - prev_minute_distance;
+    float avr_speed = minute_distance / 60;
+
+    max_speedometer = 0;
+    timeOverSeventy = 0;
+    last_minute_update = millis();
+    prev_minute_distance = total_distance;
+  }
 }
 
 void setup() {
 
-  Serial1.begin(9600);
+  Serial.begin(9600);
 
   uint8_t lineSensorPins[] = { SENSOR_DOWN1, SENSOR_DOWN2, SENSOR_DOWN3, SENSOR_DOWN5 };
   lineSensors.init(lineSensorPins, sizeof(lineSensorPins));
@@ -229,5 +289,7 @@ void loop() {
   time_since_on_track = millis();
 
   right_prox_stop();
+
+  speedometer();
 
 }
