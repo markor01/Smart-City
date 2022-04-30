@@ -13,7 +13,7 @@ Zumo32U4LCD display; //Deklarerer skjerm
 unsigned int lineSensorValues[numberOfSensors];  //Lager en liste for sensorverdier
 
 int wanted_lineSensor_val = 1500;
-int max_speed = 300;
+int max_speed = 400;
 int error;
 int last_error;
 int time_since_on_track;
