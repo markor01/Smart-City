@@ -8,12 +8,10 @@ Zumo32U4LineSensors lineSensors; //Deklarerer linjesensorer
 Zumo32U4ProximitySensors proxSensors;
 Zumo32U4ButtonA buttonA; //Deklarerer knapp A
 Zumo32U4LCD display; //Deklarerer skjerm
-Zumo32U4Encoders encoders;
 
 #define numberOfSensors 5 //Definerer antallet sensorer
 unsigned int lineSensorValues[numberOfSensors];  //Lager en liste for sensorverdier
 
-//Variabler linjefølger:
 int wanted_lineSensor_val = 1500;
 int max_speed = 300;
 int error;
@@ -22,17 +20,18 @@ int time_since_on_track;
 int left_speed;
 int right_speed;
 
-//Variabler speedometer:
-float total_distance;
-unsigned long last_speed_update;
-unsigned long last_minute_update;
-float prev_minute_distance;
-float max_speedometer;
-float timeOverSeventy;
+// Søppeltømming og stop
+bool nextStop = false;    
+int husNr = 0;
+bool husA = true;
+bool husB = true;
+bool husC = true;
+bool Lade = true;
+bool tomsoppel = false;
+unsigned long soppelTimer;
+bool drive = true;  // enables/disables driving
+unsigned long now = millis();
 
-//Variabler SW-batteri:
-float max_battery_capacity = 0.5; //mAh
-float current_battery_capacity = 0.5;
 
 void calibrateSensors() { //Oppretter funksjon for å kalibrere sensorer
   int now = millis(); //Bruker funksjonen millis() til å lagre tiden
@@ -121,9 +120,9 @@ void left_turn()
   lineSensors.readLine(lineSensorValues);
 
   motors.setSpeeds(max_speed, max_speed);
-    delay(50);
+    delay(100);
     motors.setSpeeds(0,0);
-    delay(50);
+    delay(100);
     lineSensors.readLine(lineSensorValues);
 
     if(lineSensorValues[0] < 100 && lineSensorValues[1] < 100
@@ -135,14 +134,20 @@ void left_turn()
         lineSensors.readLine(lineSensorValues);
       }
     }
+
+    else
+    {
+      motors.setSpeeds(max_speed, max_speed);
+      delay(10);
+    }
 }
 
 void right_turn()
 {
   motors.setSpeeds(max_speed, max_speed);
-    delay(50);
+    delay(100);
     motors.setSpeeds(0,0);
-    delay(50);
+    delay(100);
     lineSensors.readLine(lineSensorValues);
     
     if(lineSensorValues[0] < 100 && lineSensorValues[1] < 100
@@ -154,78 +159,72 @@ void right_turn()
         lineSensors.readLine(lineSensorValues);
       }
     }
+
+    else
+    {
+      motors.setSpeeds(max_speed, max_speed);
+      delay(10);
+    }
 }
 
+void takeTrash(){
+  now = millis();
+  if (tomsoppel){
+    motors.setSpeeds(0, 0);   // Uses 5s to take out the trash
+    drive = false;
+    if (now - soppelTimer >= 2000){
+      tomsoppel = false;
+      drive = true;
+      }
+  } 
+}
 void right_prox_stop()
 {
   proxSensors.read();
 
-  while(proxSensors.countsRightWithRightLeds() >= 6)
-  {
-    motors.setSpeeds(0, 0);
-    proxSensors.read();
-  }
-}
-
-void speedometer()
-{
-  if (millis() - last_speed_update > 100)
-  {
-    float leftCounts = encoders.getCountsAndResetLeft();
-    float rightCounts = encoders.getCountsAndResetRight();
-    float distance = (leftCounts + rightCounts) / (2 * 77); //cm
-    total_distance += distance;
-    float current_speed = distance / 0.1;
-
-    float power_consumption = (2.0 * current_speed + distance) * (1.0 / 36000.0); //mAh
-    current_battery_capacity -= power_consumption;
-
-    if(current_battery_capacity < 10)
-    {
-      //Varsling
+    if (proxSensors.countsRightWithRightLeds() >= 6){
+      nextStop = true;
     }
+    else if (nextStop){
+      nextStop = false;
+      husNr +=1;
+      switch (husNr){
 
-    if(current_battery_capacity <= 0)
-    {
-      while (current_battery_capacity <= 0)
-      {
-        motors.setSpeeds(0, 0);
+        case 1:
+          if (husA){
+            tomsoppel = true;
+            husA = false;
+          }
+          break;
+        case 2:
+          if (husB){
+            tomsoppel = true;
+            husB = false;
+          }
+          break;
+        case 3:
+          if (husC){
+            tomsoppel = true;
+            husC = false;
+          }
+          break;
+        case 4:
+          if (Lade){
+            tomsoppel = true;
+            Lade = false;
+          }
+          husNr = 0;
+          break;
+        
       }
-      
     }
-
-    if (current_speed > max_speedometer)
-    {
-      max_speedometer = current_speed;
+    
+    /*{
+      motors.setSpeeds(0, 0);
+      proxSensors.read();
     }
-
-    if (current_speed > 36)
-    {
-      timeOverSeventy += 0.1;
-    }
-
-    display.clear();
-    display.print(round(current_speed));
-    display.print(" cm/s");
-    display.gotoXY(0, 1);
-    display.print(current_battery_capacity);
-    //display.print(total_distance);
-    display.print("cm");
-
-    last_speed_update = millis();
-
-  }
-
-  if (millis() - last_minute_update > 60000)
-  {
-    float minute_distance = total_distance - prev_minute_distance;
-    float avr_speed = minute_distance / 60;
-
-    max_speedometer = 0;
-    timeOverSeventy = 0;
-    last_minute_update = millis();
-    prev_minute_distance = total_distance;
-  }
+    */
+  //}
 }
 
 transmit_to_esp()
@@ -267,42 +266,42 @@ void setup() {
 }
 
 void loop() {
+  if (drive){
+    line_follower();
 
-  line_follower();
+    if(lineSensorValues[0] < 150 && lineSensorValues[1] < 150
+      && lineSensorValues[2] < 150 && lineSensorValues[3] < 150)
+    {
+      no_tape();
+    }
 
-  if(lineSensorValues[0] < 100 && lineSensorValues[1] < 100
-    && lineSensorValues[2] < 100 && lineSensorValues[3] < 100)
-  {
-    no_tape();
-  }
+    else if(lineSensorValues[0] > 600 && lineSensorValues[1] > 600
+    && lineSensorValues[2] > 600 && lineSensorValues[3] > 600)
+    {
+      motors.setSpeeds(max_speed, max_speed);
+    }
+    
+    else if(lineSensorValues[0] > 700)
+    {
+      left_turn();
+    }
+    
+    else if(lineSensorValues[3] > 700)
+    {
+      right_turn();
+    }
 
-  else if(lineSensorValues[0] > 800 && lineSensorValues[1] > 800
-  && lineSensorValues[2] > 800 && lineSensorValues[3] > 800)
-  {
-    motors.setSpeeds(max_speed, max_speed);
-  }
-  
-  else if(lineSensorValues[0] > 900)
-  {
-    left_turn();
-  }
+    else
+    {
+      motors.setSpeeds(left_speed, right_speed);
+    }
 
-  else if(lineSensorValues[3] > 900)
-  {
-    right_turn();
-  }
-
-  /*else
-  {
-    motors.setSpeeds(left_speed, right_speed);
-  }*/
-
-  last_error = error;
-  time_since_on_track = millis();
-
+    last_error = error;
+    time_since_on_track = millis();
+    soppelTimer = now;
   right_prox_stop();
-
-  speedometer();
+  }
+  takeTrash();
 
   transmit_to_esp();
 
