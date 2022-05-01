@@ -15,7 +15,7 @@ unsigned int lineSensorValues[numberOfSensors];  //Lager en liste for sensorverd
 
 //Variabler linjefølger:
 int wanted_lineSensor_val = 1500;
-int max_speed = 400;
+int max_speed = 300;
 int error;
 int last_error;
 int time_since_on_track;
@@ -43,7 +43,7 @@ void calibrateSensors() { //Oppretter funksjon for å kalibrere sensorer
   delay(300); //Vent 200ms for at motorene ikke skal snu retning momentant
   now = millis(); //Tilbakestiller tiden
   motors.setSpeeds(200, -200); //Roterer bilen motsatt vei...
-  while (millis() - now < 900) { //...dobbelt så lenge...
+  while (millis() - now < 800) { //...dobbelt så lenge...
     lineSensors.calibrate(); //...mens sensorene oppdateres
   }
   delay(300); //Vent 200ms for at motorene ikke skal snu retning momentant
@@ -59,17 +59,17 @@ void no_tape()
 {
   lineSensors.readLine(lineSensorValues);
 
-  while(lineSensorValues[0] < 150 && lineSensorValues[1] < 150
-    && lineSensorValues[2] < 150 && lineSensorValues[3] < 150)
+  while(lineSensorValues[0] < 100 && lineSensorValues[1] < 100
+    && lineSensorValues[2] < 100 && lineSensorValues[3] < 100)
   { 
     motors.setSpeeds(max_speed, max_speed);
     
-    if(millis() - time_since_on_track > 600)
+    if(millis() - time_since_on_track > 500)
     {
       motors.setSpeeds(0,0);
       delay(200);
       
-      while(lineSensorValues[0] < 600 && lineSensorValues[3] < 600)
+      while(lineSensorValues[0] < 800 && lineSensorValues[3] < 800)
       {
         motors.setSpeeds(-max_speed, -max_speed);
         lineSensors.readLine(lineSensorValues);
@@ -78,13 +78,13 @@ void no_tape()
       motors.setSpeeds(0,0);
       delay(250);
 
-      if(lineSensorValues[0] > 400)
+      if(lineSensorValues[0] > 500)
       {
         motors.setSpeeds(-100, 300);
         delay(400);
       }
         
-      else if(lineSensorValues[3] > 400)
+      else if(lineSensorValues[3] > 500)
       {
         motors.setSpeeds(300, -100);
         delay(400);
@@ -105,13 +105,15 @@ void line_follower()
 
   error = read_value - wanted_lineSensor_val;
 
-  int speed_difference = (error * 1) + 0.5 * (error - last_error);
+  int speed_difference = (error * 0.5) + 0.5 * (error - last_error);
 
   left_speed = max_speed + speed_difference;
   right_speed = max_speed - speed_difference;
 
   left_speed = constrain(left_speed, 0, max_speed);
   right_speed = constrain(right_speed, 0, max_speed);
+
+  motors.setSpeeds(left_speed, right_speed);
 }
 
 void left_turn()
@@ -124,8 +126,8 @@ void left_turn()
     delay(50);
     lineSensors.readLine(lineSensorValues);
 
-    if(lineSensorValues[0] < 150 && lineSensorValues[1] < 150
-    && lineSensorValues[2] < 150 && lineSensorValues[3] < 150)
+    if(lineSensorValues[0] < 100 && lineSensorValues[1] < 100
+    && lineSensorValues[2] < 100 && lineSensorValues[3] < 100)
     {
       while(lineSensorValues[2] < 800)
       {
@@ -143,8 +145,8 @@ void right_turn()
     delay(50);
     lineSensors.readLine(lineSensorValues);
     
-    if(lineSensorValues[0] < 150 && lineSensorValues[1] < 150
-    && lineSensorValues[2] < 150 && lineSensorValues[3] < 150)
+    if(lineSensorValues[0] < 100 && lineSensorValues[1] < 100
+    && lineSensorValues[2] < 100 && lineSensorValues[3] < 100)
     {
       while(lineSensorValues[1] < 800)
       {
@@ -226,9 +228,19 @@ void speedometer()
   }
 }
 
+transmit_to_esp()
+{
+  Serial1.println("current_battery_capacity ");
+  Serial1.print(current_battery_capacity);
+  Serial1.println(" ");
+  Serial1.println("total_distance ");
+  Serial1.print(total_distance);
+  Serial1.println(" ");
+}
+
 void setup() {
 
-  Serial.begin(9600);
+  Serial1.begin(9600);
 
   uint8_t lineSensorPins[] = { SENSOR_DOWN1, SENSOR_DOWN2, SENSOR_DOWN3, SENSOR_DOWN5 };
   lineSensors.init(lineSensorPins, sizeof(lineSensorPins));
@@ -258,32 +270,32 @@ void loop() {
 
   line_follower();
 
-  if(lineSensorValues[0] < 150 && lineSensorValues[1] < 150
-    && lineSensorValues[2] < 150 && lineSensorValues[3] < 150)
+  if(lineSensorValues[0] < 100 && lineSensorValues[1] < 100
+    && lineSensorValues[2] < 100 && lineSensorValues[3] < 100)
   {
     no_tape();
   }
 
-  else if(lineSensorValues[0] > 600 && lineSensorValues[1] > 600
-  && lineSensorValues[2] > 600 && lineSensorValues[3] > 600)
+  else if(lineSensorValues[0] > 800 && lineSensorValues[1] > 800
+  && lineSensorValues[2] > 800 && lineSensorValues[3] > 800)
   {
     motors.setSpeeds(max_speed, max_speed);
   }
   
-  else if(lineSensorValues[0] > 700)
+  else if(lineSensorValues[0] > 900)
   {
     left_turn();
   }
 
-  else if(lineSensorValues[3] > 700)
+  else if(lineSensorValues[3] > 900)
   {
     right_turn();
   }
 
-  else
+  /*else
   {
     motors.setSpeeds(left_speed, right_speed);
-  }
+  }*/
 
   last_error = error;
   time_since_on_track = millis();
@@ -291,5 +303,7 @@ void loop() {
   right_prox_stop();
 
   speedometer();
+
+  transmit_to_esp();
 
 }
